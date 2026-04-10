@@ -2,7 +2,7 @@
   "name": "nexus-ai-website-builder",
   "version": "1.0.0",
   "description": "A premium AI-powered real-time website builder.",
-  "author": "NEXUS AI Team",
+  "author": "Shivam Chauhan",
   "engines": {
     "node": ">=18.0.0"
   },

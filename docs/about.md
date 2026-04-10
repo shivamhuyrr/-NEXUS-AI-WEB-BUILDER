@@ -32,7 +32,7 @@ The foundation of this project relies on breakthroughs in natural language proce
 
 ## Credits
 
-**Developed and Designed by:** NEXUS AI Team
+**Developed and Designed by:** Shivam Chauhan
 
 Special thanks to:
 
