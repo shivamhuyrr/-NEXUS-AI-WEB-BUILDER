@@ -101,6 +101,7 @@ const NexusLandingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-lg md:text-xl text-slate-400 mb-10 max-w-2xl mx-auto"
+            spellCheck={false}
           >
             {t('hero.subtitle')}
           </motion.p>

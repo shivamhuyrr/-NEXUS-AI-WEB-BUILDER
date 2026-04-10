@@ -1,15 +1,19 @@
-
 const dotenv = require('dotenv');
-dotenv.config();
-console.log('ENV TEST:', process.env.ANTHROPIC_API_KEY ? '[HIDDEN]' : 'NOT SET');
+const path = require('path');
+dotenv.config({ path: path.join(__dirname, '.env') });
+
 const express = require('express');
 const cors = require('cors');
 const { generateWebsite, modifyWebsite, extractPartialCode } = require('./geminiService');
-
-
-
-const app = express();
 const port = process.env.PORT || 3001;
+const app = express();
+
+console.log('--- SYSTEM STATUS ---');
+console.log('PORT:', port);
+console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? '✅ SET' : '❌ NOT SET');
+console.log('ANTHROPIC_API_KEY:', process.env.ANTHROPIC_API_KEY ? '✅ SET' : '❌ NOT SET');
+console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '✅ SET' : '❌ NOT SET');
+console.log('---------------------');
 
 // Middleware
 app.use(cors());
@@ -46,7 +50,12 @@ app.post('/api/generate-website', async (req, res) => {
     await handleStreamingResponse(stream, res);
   } catch (error) {
     console.error('Error generating website:', error);
-    res.status(500).json({ error: 'Failed to generate website', details: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate website', details: error.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
+    }
   }
 });
 
@@ -70,7 +79,12 @@ app.post('/api/modify-website', async (req, res) => {
     await handleStreamingResponse(stream, res);
   } catch (error) {
     console.error('Error modifying website:', error);
-    res.status(500).json({ error: 'Failed to modify website', details: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to modify website', details: error.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
+    }
   }
 });
 

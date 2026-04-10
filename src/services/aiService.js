@@ -1,4 +1,7 @@
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+console.log('--- CONNECTIVITY DIAGNOSTIC ---');
+console.log('ACTIVE BACKEND URL:', BACKEND_URL || 'RELATIVE PROXY (Port 3001 via package.json)');
+console.log('------------------------------');
 
 export async function generateWebsite(description, onUpdate) {
   try {
@@ -55,37 +58,47 @@ async function handleStreamingResponse(response, onUpdate) {
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
 
-    // Append the newly streamed bytes to the buffer
-    buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
 
-    // Split on double newline, which denotes the end of an SSE message
-    const parts = buffer.split('\n\n');
+      for (const part of parts) {
+        const lines = part.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') return;
+            if (!data) continue;
 
-    // The very last part might be an incomplete chunk, so we keep it in the buffer
-    buffer = parts.pop();
-
-    for (const part of parts) {
-      const lines = part.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') {
-            return;
-          }
-          if (!data) continue;
-
-          try {
-            const parsedData = JSON.parse(data);
-            onUpdate(parsedData);
-          } catch (error) {
-            console.error('Error parsing JSON:', error, 'Raw Data:', data);
+            try {
+              const parsedData = JSON.parse(data);
+              if (parsedData.error) {
+                 console.error('SSE Error from backend:', parsedData.error);
+                 throw new Error(parsedData.error);
+              }
+              onUpdate(parsedData);
+            } catch (error) {
+              console.error('Error parsing JSON or handling SSE error:', error, 'Raw Data:', data);
+              if (error.message.includes('Unexpected token')) continue;
+              throw error;
+            }
           }
         }
       }
     }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      console.log('Stream aborted by user/browser');
+    } else {
+      console.error('Stream read error:', err);
+      throw err;
+    }
+  } finally {
+    reader.releaseLock();
   }
 }

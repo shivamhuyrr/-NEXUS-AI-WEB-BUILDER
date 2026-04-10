@@ -1,19 +1,20 @@
 const { GoogleGenAI } = require('@google/genai');
 
-// Initialize the modern Gemini SDK Client instead of the deprecated one
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+function getAI() {
+    if (!process.env.GEMINI_API_KEY) {
+        throw new Error('GEMINI_API_KEY is not set. Add it to your .env or Vercel dashboard.');
+    }
+    return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+}
+
+// Models to try in order of preference
+const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 
 function extractPartialCode(content, language) {
-    // Looks for language block or gracefully fallback to anything that resembles html/css
-    const regex = new RegExp(`(?:\`\`\`${language}\\s*|^\\s*<(!|html|style)|[^{}]*body\\s*\\{)([\\s\\S]*?)(?:\`\`\`|$)`, 'i');
-    
-    // Original simpler regex for strict markdown blocks
     const strictRegex = new RegExp(`\`\`\`${language}\\s*([\\s\\S]*?)(\`\`\`|$)`, 'i');
-    
     let match = content.match(strictRegex);
     if (match) return match[1];
-    
-    // If strict regex fails but we are looking for html/css, do a naive extraction
+
     if (language === 'html') {
         const htmlMatch = content.match(/<html[\s\S]*<\/html>/i) || content.match(/<body[\s\S]*<\/body>/i);
         if (htmlMatch) return htmlMatch[0];
@@ -21,13 +22,42 @@ function extractPartialCode(content, language) {
         const cssMatch = content.match(/body\s*\{[\s\S]*\}/i);
         if (cssMatch) return cssMatch[0];
     }
-    
+
     return '';
 }
 
+async function tryWithRetryAndFallback(requestFn, maxRetries = 3) {
+    for (const model of MODELS) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`Trying model: ${model} (attempt ${attempt}/${maxRetries})`);
+                return await requestFn(model);
+            } catch (error) {
+                const status = error.status || error.statusCode || 0;
+                console.error(`Model ${model} attempt ${attempt} failed (status ${status}): ${error.message?.substring(0, 100)}`);
+                
+                if (status === 503 || status === 429) {
+                    // Overloaded or rate limited — wait then retry or try next model
+                    if (attempt < maxRetries) {
+                        const delay = 3000 * attempt;
+                        console.log(`Waiting ${delay}ms before retry...`);
+                        await new Promise(r => setTimeout(r, delay));
+                    }
+                    continue;
+                }
+                // For other errors, throw immediately
+                throw error;
+            }
+        }
+        console.log(`All retries exhausted for ${model}, trying next model...`);
+    }
+    throw new Error('All models are currently unavailable. Please try again in a few moments.');
+}
+
 async function generateWebsite(description) {
-    try {
-        const prompt = `Create a complete, modern website with the following description: "${description}"
+    const ai = getAI();
+    
+    const prompt = `Create a complete, modern website with the following description: "${description}"
 
 Requirements:
 - Fully responsive design that works on desktop, tablet, and mobile
@@ -41,13 +71,15 @@ Requirements:
 
 Return the HTML and CSS separately, enclosed in code blocks (\`\`\`html ... \`\`\` and \`\`\`css ... \`\`\`).`;
 
-        // Under the new GenAI SDK, systemInstructions go in the config object
-        const responseStream = await ai.models.generateContentStream({
-            model: 'gemini-1.5-flash',
-            contents: prompt,
-            config: {
-                systemInstruction: "You are an expert web developer specializing in creating modern, responsive websites. Always generate complete, functional HTML and CSS code blocks based on the given description. Respond with HTML code first, followed by CSS code. Use ```html and ```css code blocks to enclose the respective code."
-            }
+    try {
+        const responseStream = await tryWithRetryAndFallback(async (model) => {
+            return await ai.models.generateContentStream({
+                model: model,
+                contents: prompt,
+                config: {
+                    systemInstruction: "You are an expert web developer specializing in creating modern, responsive websites. Always generate complete, functional HTML and CSS code blocks based on the given description. Respond with HTML code first, followed by CSS code. Use ```html and ```css code blocks to enclose the respective code."
+                }
+            });
         });
 
         return responseStream;
@@ -59,8 +91,9 @@ Return the HTML and CSS separately, enclosed in code blocks (\`\`\`html ... \`\`
 }
 
 async function modifyWebsite(modificationDescription, currentHtml, currentCss) {
-    try {
-        const prompt = `
+    const ai = getAI();
+
+    const prompt = `
 Current HTML:
 \`\`\`html
 ${currentHtml}
@@ -82,13 +115,15 @@ Please implement the requested modification while:
 
 Return the complete updated HTML and CSS separately, enclosed in code blocks (\`\`\`html ... \`\`\` and \`\`\`css ... \`\`\`).`;
 
-        // Stream the modifications
-        const responseStream = await ai.models.generateContentStream({
-            model: 'gemini-1.5-flash',
-            contents: prompt,
-            config: {
-                systemInstruction: "You are an expert web developer making modifications to existing websites. Maintain the overall design consistency while implementing the requested changes. Modify the given HTML and CSS code based on the provided modification description. Respond with the updated HTML code first, followed by the updated CSS code. Use ```html and ```css code blocks to enclose the respective code."
-            }
+    try {
+        const responseStream = await tryWithRetryAndFallback(async (model) => {
+            return await ai.models.generateContentStream({
+                model: model,
+                contents: prompt,
+                config: {
+                    systemInstruction: "You are an expert web developer making modifications to existing websites. Maintain the overall design consistency while implementing the requested changes. Modify the given HTML and CSS code based on the provided modification description. Respond with the updated HTML code first, followed by the updated CSS code. Use ```html and ```css code blocks to enclose the respective code."
+                }
+            });
         });
 
         return responseStream;

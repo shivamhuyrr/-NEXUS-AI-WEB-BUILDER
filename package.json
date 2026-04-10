@@ -6,6 +6,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "proxy": "http://localhost:3001",
   "dependencies": {
     "@codesandbox/sandpack-react": "^2.20.0",
     "@anthropic-ai/sdk": "^0.52.0",
