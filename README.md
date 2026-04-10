@@ -136,5 +136,5 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ---
 
 <div align="center">
-  Built with ❤️ by the <b>NEXUS AI Engineering Team</b>
+  Built with ❤️ by <b>Shivam Chauhan</b>
 </div>
